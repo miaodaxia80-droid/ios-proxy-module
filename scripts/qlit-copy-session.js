@@ -24,13 +24,11 @@ if (typeof $persistentStore !== 'undefined' && typeof $done !== 'undefined') {
       }
     } catch (e) { /* 继续走通知兜底 */ }
 
-    if (copied) {
-      $notification.post('出行登记', '✓ 会话已复制', '打开 QLIT「出行登记」粘贴即可');
-      $done({ title: '出行登记', content: '会话已复制到剪贴板' });
-    } else {
-      $notification.post('出行登记', '请长按本通知并「拷贝」', session);
-      $done({ title: '出行登记', content: '会话较长，请长按通知拷贝' });
-    }
+    // 无论剪贴板是否可用，都提供“点通知直达 QLIT 导入”的路径
+    $notification.post('出行登记', '✓ 点此打开 QLIT 导入会话' + (copied ? '（已复制剪贴板）' : ''),
+      '点击后自动导入并验证',
+      { url: 'qlit://import-session?value=' + encodeURIComponent(session) });
+    $done({ title: '出行登记', content: '已生成导入入口，点通知直达 QLIT' });
   }
 } else if (typeof module !== 'undefined' && module.exports) {
   module.exports = { KEY_SESSION: KEY_SESSION };

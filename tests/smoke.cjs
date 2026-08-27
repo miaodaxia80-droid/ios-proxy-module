@@ -49,19 +49,19 @@ t('runCapture 首次捕获写入存储并发通知', () => {
   assert.strictEqual(store.read('qlit_session'), 'S1');
   assert.strictEqual(notes.length, 1);
 });
-t('runCapture 剪贴板不可用时通知带完整会话提示', () => {
+t('runCapture 通知携带 qlit:// 直达导入 URL', () => {
   const store = memStore();
   const notes = [];
   const r = capture.runCapture(
     { url: 'https://pass.qlit.edu.cn/x', headers: { cookie: 'JSESSIONID=S2' } },
     store,
-    (t1, sub, body) => notes.push([t1, sub, body]),
+    (t1, sub, body, urlOpt) => notes.push([t1, sub, body, urlOpt]),
     () => false
   );
   assert.strictEqual(r.copied, false);
   assert.match(notes[0][1], /已捕获校园会话/);
-  assert.match(notes[0][2], /长按本通知/);
-  assert.match(notes[0][2], /S2/);
+  assert.match(notes[0][2], /点此打开 QLIT/);
+  assert.strictEqual(notes[0][3].url, 'qlit://import-session?value=S2');
 });
 t('runCapture 同值会话不重复触发复制', () => {
   let copyCalls = 0;

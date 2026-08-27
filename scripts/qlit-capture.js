@@ -49,10 +49,10 @@ function runCapture(request, store, notify, copyFn) {
     store.write(jsid, KEY_SESSION);
     store.write(String(now), KEY_AT);
     var copied = writeClipboard(jsid, copyFn);
-    notify('出行登记', '✓ 已捕获校园会话' + (copied ? '，已复制到剪贴板' : ''),
-      copied
-        ? jsid.slice(0, 16) + '…\n打开 QLIT「出行登记」粘贴即可'
-        : 'jsid: ' + jsid + '\n（长按本通知「拷贝」，再粘贴到 QLIT）');
+    // 优先走通知 URL 直达：点击通知即把会话投递给 QLIT App 自动导入
+    notify('出行登记', '✓ 已捕获校园会话' + (copied ? '，已复制' : ''),
+      '点此打开 QLIT 自动导入',
+      { url: 'qlit://import-session?value=' + encodeURIComponent(jsid) });
     return { wrote: true, changed: true, copied: copied };
   }
   // 会话没变：超过静默窗才刷新时间戳（给保活脚本一个“最后确认存活”参考）
@@ -65,10 +65,14 @@ function runCapture(request, store, notify, copyFn) {
 // 代理引擎环境
 if (typeof $request !== 'undefined' && typeof $done !== 'undefined') {
   try {
-    runCapture($request, $persistentStore, function (t, sub, body) {
-      $notification.post(t, sub, body);
+    runCapture($request, $persistentStore, function (t, sub, body, urlOpt) {
+      if (urlOpt && urlOpt.url) {
+        $notification.post(t, sub, body, urlOpt);
+      } else {
+        $notification.post(t, sub, body);
+      }
     }, function (text) {
-      // 特性探测：有 $clipboard.write 就直写剪贴板
+      // 特性探测：有 $clipboard.write 就直写剪贴板（部分版本支持）
       if (typeof $clipboard !== 'undefined' && $clipboard && typeof $clipboard.write === 'function') {
         $clipboard.write(text);
         return true;
