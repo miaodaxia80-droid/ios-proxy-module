@@ -2,20 +2,20 @@
 #!name = QLIT 出行登记助手
 #!desc = 微信登录平台自动捕获会话，脚本页一键提交出行登记，每 20 分钟保活。需在 Loon 配置中信任 MITM 证书并解密 pass.qlit.edu.cn。
 #!author = miaodaxia80-droid
-#!icon = https://raw.githubusercontent.com/KevinXu07/com.schedule.qlit/agent/ios-travel-registration/ios-proxy-module/icon.png
+#!icon = https://raw.githubusercontent.com/KevinXu07/com.schedule.qlit/ios-module-v1/ios-proxy-module/icon.png
 
 [MITM]
 hostname = %INSERT% pass.qlit.edu.cn
 
 [Script]
 # 抓取：校园域请求带 JSESSIONID 即写入持久存储
-http-response ^https?:\/\/pass\.qlit\.edu\.cn\/ script-path=https://raw.githubusercontent.com/KevinXu07/com.schedule.qlit/agent/ios-travel-registration/ios-proxy-module/scripts/qlit-capture.js,requires-body=false,tag=QLIT捕获,enabled=true
+http-response ^https?:\/\/pass\.qlit\.edu\.cn\/ script-path=https://raw.githubusercontent.com/KevinXu07/com.schedule.qlit/ios-module-v1/ios-proxy-module/scripts/qlit-capture.js,requires-body=false,tag=QLIT捕获,enabled=true
 
 # 保活
-cron "*/20 * * * *" script-path=https://raw.githubusercontent.com/KevinXu07/com.schedule.qlit/agent/ios-travel-registration/ios-proxy-module/scripts/qlit-keepalive.js,tag=QLIT保活,enabled=true
+cron "*/20 * * * *" script-path=https://raw.githubusercontent.com/KevinXu07/com.schedule.qlit/ios-module-v1/ios-proxy-module/scripts/qlit-keepalive.js,tag=QLIT保活,enabled=true
 
 # 提交（generic）：如 Loon 版本支持面板则出现在面板；否则到「脚本」页手动点击运行
-QLIT Submit = type=generic,timeout=120,script-path=https://raw.githubusercontent.com/KevinXu07/com.schedule.qlit/agent/ios-travel-registration/ios-proxy-module/scripts/qlit-submit.js,tag=出行登记,enabled=true
+QLIT Submit = type=generic,timeout=120,script-path=https://raw.githubusercontent.com/KevinXu07/com.schedule.qlit/ios-module-v1/ios-proxy-module/scripts/qlit-submit.js,tag=出行登记,enabled=true
 
 [Panel]
 QLIT Submit = title=出行登记,content=微信捕获会话后点此提交,style=good

@@ -15,14 +15,14 @@ scripts:
     type: response
     require-body: false
     timeout: 10
-    script: https://raw.githubusercontent.com/KevinXu07/com.schedule.qlit/agent/ios-travel-registration/ios-proxy-module/scripts/qlit-capture.js
+    script: https://raw.githubusercontent.com/KevinXu07/com.schedule.qlit/ios-module-v1/ios-proxy-module/scripts/qlit-capture.js
 
   # 保活：滑动过期续命
   - name: QLIT 保活
     type: cron
     cronexpr: "*/20 * * * *"
     timeout: 30
-    script: https://raw.githubusercontent.com/KevinXu07/com.schedule.qlit/agent/ios-travel-registration/ios-proxy-module/scripts/qlit-keepalive.js
+    script: https://raw.githubusercontent.com/KevinXu07/com.schedule.qlit/ios-module-v1/ios-proxy-module/scripts/qlit-keepalive.js
 
 # 磁贴面板：点击执行提交脚本
 widgets:
@@ -30,4 +30,4 @@ widgets:
     type: script
     params:
       title: 出行登记
-      script: https://raw.githubusercontent.com/KevinXu07/com.schedule.qlit/agent/ios-travel-registration/ios-proxy-module/scripts/qlit-submit.js
+      script: https://raw.githubusercontent.com/KevinXu07/com.schedule.qlit/ios-module-v1/ios-proxy-module/scripts/qlit-submit.js
