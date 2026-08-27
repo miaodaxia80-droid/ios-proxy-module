@@ -15,5 +15,9 @@ QLIT Submit = type=generic,timeout=120,script-path=https://raw.githubusercontent
 # 保活：滑动过期续命（详见 scripts/qlit-keepalive.js 头注释）
 QLIT KeepAlive = type=cron,cronexp="*/20 * * * *",wake-system=false,timeout=30,script-path=https://raw.githubusercontent.com/miaodaxia80-droid/ios-proxy-module/main/scripts/qlit-keepalive.js
 
+# 复制会话：点击下面面板把 JSESSIONID 写入剪贴板，供 QLIT App 粘贴导入
+QLIT Copy = type=generic,timeout=30,script-path=https://raw.githubusercontent.com/miaodaxia80-droid/ios-proxy-module/main/scripts/qlit-copy-session.js
+
 [Panel]
 QLIT Submit = title=出行登记,content=微信捕获会话后点此提交,style=good
+QLIT Copy = title=复制会话,content=捕获后点此复制会话,style=neutral
