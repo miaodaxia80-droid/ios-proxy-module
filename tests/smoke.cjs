@@ -44,13 +44,39 @@ t('capture 非校园域请求忽略', () => {
   assert.strictEqual(r.skipped, 'host');
 });
 t('capture 忽略 mj_view 域接口（作用域过滤）', () => {
-  const store = memStore();
+  const store = memStore({ qlit_debug_at: '0' });
+  const notes = [];
+  // 全域名捕获 + 探测甄别：mj 域会话探测失败 → 拉黑 + 调试通知，不入库
   const r = capture.runCapture(
     { url: 'https://pass.qlit.edu.cn/mj_view/RemoteAnswer.do?lk=1', headers: { Cookie: 'JSESSIONID=MJ1' } },
-    store, () => {}
+    store,
+    (t1, sub) => notes.push(sub),
+    () => true,
+    probeSync(false)
   );
-  assert.strictEqual(r.skipped, 'scope');
+  assert.strictEqual(r.probing, true);
   assert.strictEqual(store.read('qlit_session'), '');
+  assert.strictEqual(store.read('qlit_rejected'), 'MJ1');
+  assert.strictEqual(notes.length, 1);
+  // 同一坏会话再次出现（mj_view 高频）→ 直接跳过，不重复探测
+  const r2 = capture.runCapture(
+    { url: 'https://pass.qlit.edu.cn/mj_view/RemoteAnswer.do?lk=2', headers: { Cookie: 'JSESSIONID=MJ1' } },
+    store, () => {},
+    () => true,
+    (j, cb) => { throw new Error('不应再探测'); }
+  );
+  assert.strictEqual(r2.rejected, true);
+});
+t('capture 探测通过后清除黑名单', () => {
+  const store = memStore({ qlit_rejected: 'OLD', qlit_debug_at: '0' });
+  capture.runCapture(
+    { url: 'https://pass.qlit.edu.cn/student/mobile/admin.jsp', headers: { Cookie: 'JSESSIONID=GOOD' } },
+    store, () => {},
+    () => true,
+    probeSync(true)
+  );
+  assert.strictEqual(store.read('qlit_session'), 'GOOD');
+  assert.strictEqual(store.read('qlit_rejected'), '');
 });
 t('capture /student/ 新会话实测通过 → 入库并发通知（带 qlit:// 直达 URL）', () => {
   const store = memStore();
@@ -80,6 +106,7 @@ t('capture 实测失败 → 不入库、发调试通知（限频）', () => {
     (j, cb) => cb(false, { status: '200', preview: '<html>登录页</html>' })
   );
   assert.strictEqual(store.read('qlit_session'), '');
+  assert.strictEqual(store.read('qlit_rejected'), 'BAD1');
   assert.strictEqual(notes.length, 1);
   assert.match(notes[0][0], /调试/);
   assert.match(notes[0][1], /HTTP 200/);
@@ -120,8 +147,8 @@ t('runCapture 非校园域忽略且同值不写库', () => {
   const notes = [];
   const hostSkip = capture.runCapture({ url: 'https://a.com/', headers: {} }, store, () => notes.push(1));
   assert.strictEqual(hostSkip.skipped, 'host');
-  const scopeSkip = capture.runCapture({ url: 'https://pass.qlit.edu.cn/x', headers: { cookie: 'JSESSIONID=S1' } }, store, () => notes.push(2));
-  assert.strictEqual(scopeSkip.skipped, 'scope');
+  const sameValue = capture.runCapture({ url: 'https://pass.qlit.edu.cn/x', headers: { cookie: 'JSESSIONID=S1' } }, store, () => notes.push(2));
+  assert.deepStrictEqual(sameValue, { wrote: true, changed: false, copied: false });
   assert.strictEqual(notes.length, 0);
   assert.strictEqual(store.read('qlit_session'), 'S1');
 });

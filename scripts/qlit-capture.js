@@ -16,6 +16,7 @@
 var KEY_SESSION = 'qlit_session';
 var KEY_AT = 'qlit_captured_at';
 var KEY_PROBE = 'qlit_probe_pending';
+var KEY_REJECTED = 'qlit_rejected';
 var KEY_DEBUG_AT = 'qlit_debug_at';
 var NOTIFY_SILENCE_MS = 5 * 60 * 1000;
 var DEBUG_SILENCE_MS = 10 * 60 * 1000; // 调试通知最多 10 分钟一条
@@ -69,15 +70,15 @@ function notifyDebug(store, notify, info) {
 function runCapture(request, store, notify, copyFn, probe) {
   var url = (request && request.url) || '';
   if (!/pass\.qlit\.edu\.cn/.test(url)) return { wrote: false, skipped: 'host' };
-  // 只收 student 域的会话（mj_view 域接口 Cookie 会污染 SSO）
-  if (!/\/student\//.test(url)) return { wrote: false, skipped: 'scope' };
+  // 说明：不做路径过滤。手机微信已登录态下可能全程没有 /student/ 请求，
+  // 域的甄别交给下面的 SSO 实测——mj 域会话实测必然失败并进黑名单。
 
   var headers = (request && request.headers) || {};
   var raw = headers.Cookie || headers.cookie || '';
   var jsid = extractJsid(raw);
   if (!jsid) return { wrote: false, skipped: 'no-cookie' };
 
-  // 验证请求自己携带的旧值会话：只刷新时间戳，不重复处理
+  // 已是当前会话：只刷新时间戳（保活脚本据此判断存活）
   var old = store.read(KEY_SESSION);
   var now = Date.now();
   if (jsid === old) {
@@ -86,17 +87,20 @@ function runCapture(request, store, notify, copyFn, probe) {
     }
     return { wrote: true, changed: false, copied: false };
   }
-  // 该 JWT 正在被验证（防验证请求自身重入死循环）
+  // 验证请求自身（防重入）与已拉黑的会话都直接跳过
   if (store.read(KEY_PROBE) === jsid) return { wrote: false, pending: true };
+  if (store.read(KEY_REJECTED) === jsid) return { wrote: false, rejected: true };
 
-  // 新会话：标记 → 实测 → 通过才入库并通知
+  // 新候选：标记 → SSO 实测 → 通过才入库并通知，失败拉黑
   store.write(jsid, KEY_PROBE);
   verifySession(jsid, probe, function (ok, info) {
     store.write('', KEY_PROBE);
     if (!ok) {
-      notifyDebug(store, notify, info); // 失败也要让用户看到原因
+      store.write(jsid, KEY_REJECTED); // 同一坏会话不再重复探测（mj_view 请求高频出现）
+      notifyDebug(store, notify, info);
       return;
     }
+    store.write('', KEY_REJECTED);
     store.write(jsid, KEY_SESSION);
     store.write(String(Date.now()), KEY_AT);
     var copied = false;
