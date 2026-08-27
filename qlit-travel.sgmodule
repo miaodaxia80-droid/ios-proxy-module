@@ -1,23 +1,25 @@
 #!name=出行登记助手
-#!desc=微信登录校园在校生平台后自动捕获 JSESSIONID；Surge 面板一键提交出行登记；每 20 分钟保活会话。使用前请阅读模块内 README：需信任 MITM 证书并开启对 pass.qlit.edu.cn 的解密。
+#!desc=v3 诊断版：微信登录校园平台后自动捕获 JSESSIONID（SSO 实测通过才通知，点击通知直达 QLIT 导入）；监听整个 qlit.edu.cn 并报告发现的子域名；含复制会话/提交/保活/诊断面板。需信任 MITM 证书并开启解密。
 #!system=ios
 
 [MITM]
-hostname = %APPEND% pass.qlit.edu.cn
+hostname = %APPEND% pass.qlit.edu.cn, *.qlit.edu.cn
 
 [Script]
-# 抓取：任何经过代理的校园域请求携带 JSESSIONID 即落库
-QLIT Captor = type=http-response,pattern=^https?:\/\/pass\.qlit\.edu\.cn\/,requires-body=false,max-size=0,timeout=10,script-path=https://raw.githubusercontent.com/miaodaxia80-droid/ios-proxy-module/main/scripts/qlit-capture.js
+# 抓取+发现：监听整个 qlit.edu.cn；新子域名与无会话请求都会发调试通知
+QLIT Captor = type=http-response,pattern=qlit\.edu\.cn,requires-body=false,max-size=0,timeout=10,script-path=https://raw.githubusercontent.com/miaodaxia80-droid/ios-proxy-module/main/scripts/qlit-capture.js
 
 # 提交：点击下方 Panel 执行完整业务流程
 QLIT Submit = type=generic,timeout=120,script-path=https://raw.githubusercontent.com/miaodaxia80-droid/ios-proxy-module/main/scripts/qlit-submit.js
 
-# 保活：滑动过期续命（详见 scripts/qlit-keepalive.js 头注释）
+# 保活：滑动过期续命
 QLIT KeepAlive = type=cron,cronexp="*/20 * * * *",wake-system=false,timeout=30,script-path=https://raw.githubusercontent.com/miaodaxia80-droid/ios-proxy-module/main/scripts/qlit-keepalive.js
 
-# 复制会话：点击下面面板把 JSESSIONID 写入剪贴板，供 QLIT App 粘贴导入
+# 复制会话 / 诊断：见 Panel
 QLIT Copy = type=generic,timeout=30,script-path=https://raw.githubusercontent.com/miaodaxia80-droid/ios-proxy-module/main/scripts/qlit-copy-session.js
+QLIT Diagnose = type=generic,timeout=30,script-path=https://raw.githubusercontent.com/miaodaxia80-droid/ios-proxy-module/main/scripts/qlit-diagnose.js
 
 [Panel]
 QLIT Submit = title=出行登记,content=微信捕获会话后点此提交,style=good
 QLIT Copy = title=复制会话,content=捕获后点此复制会话,style=neutral
+QLIT Diagnose = title=诊断,content=点此查看捕获状态,style=info
