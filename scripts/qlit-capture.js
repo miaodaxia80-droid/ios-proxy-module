@@ -1,19 +1,27 @@
 /**
  * QLIT 出行登记 · 会话捕获脚本
  *
- * 以 http-response 钩子挂在整个校园域上：任何携带 student 域 JSESSIONID 的
- * 请求都会把会话写入 $persistentStore；**抓到新会话时自动尝试复制到剪贴板**，
- * 复制成功后主 App 「出行登记」里直接粘贴即可导入。
+ * 只有 student 域的 JSESSIONID 才能用于 SSO 换 JWT，mj_view 域的不行。
+ * 因此本脚本：
+ *  1. 只处理 URL 路径含 /student/ 的请求（魔托 admin.jsp / sso 页等），
+ *     排除 mj_view 域接口带来的干扰 Cookie；
+ *  2. 抓到**新**会话后先用 SSO 接口实测（请求 sso 页看是否返回授权令牌），
+ *     验证通过才写入存储并发通知——通知里的会话保证可用；
+ *  3. 验证请求到达时用 pending 标记防重入（避免验证请求自身再次触发捕获）。
  *
- * 剪贴板说明：Surge 不同版本对剪贴板 API 支持不一，脚本做特性探测；
- * 若当前版本不可用，通知会改为显示完整会话，长按通知「拷贝」。
- *
- * 挂载方式见同目录上级清单文件（.sgmodule / .stoverride / .plugin）。
+ * 通知携带 qlit:// URL：点击直达 QLIT App 自动导入。
+ * 剪贴板做特性探测，支持则顺带复制一份（兼容未来版本）。
  */
 
 var KEY_SESSION = 'qlit_session';
 var KEY_AT = 'qlit_captured_at';
-var NOTIFY_SILENCE_MS = 5 * 60 * 1000; // 同值会话的重复通知静默窗
+var KEY_PROBE = 'qlit_probe_pending';
+var NOTIFY_SILENCE_MS = 5 * 60 * 1000;
+
+var SSO_URL = 'https://pass.qlit.edu.cn/student/mobile/sso_mj_baobei/index.jsp';
+var PROBE_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ' +
+               'AppleWebKit/537.36 NetType/WIFI ' +
+               'MicroMessenger/7.0.20.1781(0x6700143B) MacWechat/3.8.7';
 
 function extractJsid(raw) {
   if (!raw) return '';
@@ -22,44 +30,67 @@ function extractJsid(raw) {
   return m ? m[1] : '';
 }
 
-/**
- * 尝试把文本写入剪贴板。copyFn 由引擎侧注入（特性探测后的具体实现），
- * 返回是否成功；Node 测试环境不可用时传 null。
- */
-function writeClipboard(text, copyFn) {
-  try {
-    if (typeof copyFn === 'function') return copyFn(text);
-  } catch (e) { /* 忽略，走通知兜底 */ }
-  return false;
+function hhmm(d) {
+  d = d || new Date();
+  function p(n) { return (n < 10 ? '0' : '') + n; }
+  return p(d.getHours()) + p(d.getMinutes());
 }
 
-function runCapture(request, store, notify, copyFn) {
+/**
+ * 对新会话做一次 SSO 实测。probe 由引擎侧注入（$httpClient 实现），
+ * 以回调返回是否拿到 JWT；Node 测试环境传 null 时视为可用。
+ */
+function verifySession(jsid, probe, cb) {
+  try {
+    if (typeof probe === 'function') {
+      probe(jsid, cb);
+    } else {
+      cb(true);
+    }
+  } catch (e) {
+    cb(false);
+  }
+}
+
+function runCapture(request, store, notify, copyFn, probe) {
   var url = (request && request.url) || '';
-  if (!/pass\.qlit\.edu\.cn/.test(url)) return { wrote: false };
+  if (!/pass\.qlit\.edu\.cn/.test(url)) return { wrote: false, skipped: 'host' };
+  // 只收 student 域的会话（mj_view 域接口 Cookie 会污染 SSO）
+  if (!/\/student\//.test(url)) return { wrote: false, skipped: 'scope' };
 
   var headers = (request && request.headers) || {};
   var raw = headers.Cookie || headers.cookie || '';
   var jsid = extractJsid(raw);
-  if (!jsid) return { wrote: false };
+  if (!jsid) return { wrote: false, skipped: 'no-cookie' };
 
+  // 验证请求自己携带的旧值会话：只刷新时间戳，不重复处理
   var old = store.read(KEY_SESSION);
   var now = Date.now();
+  if (jsid === old) {
+    if (now - Number(store.read(KEY_AT) || 0) > NOTIFY_SILENCE_MS) {
+      store.write(String(now), KEY_AT);
+    }
+    return { wrote: true, changed: false, copied: false };
+  }
+  // 该 JWT 正在被验证（防验证请求自身重入死循环）
+  if (store.read(KEY_PROBE) === jsid) return { wrote: false, pending: true };
 
-  if (old !== jsid) {
+  // 新会话：标记 → 实测 → 通过才入库并通知
+  store.write(jsid, KEY_PROBE);
+  verifySession(jsid, probe, function (ok) {
+    store.write('', KEY_PROBE);
+    if (!ok) return; // 会话无效，静默等待下一个候选
     store.write(jsid, KEY_SESSION);
-    store.write(String(now), KEY_AT);
-    var copied = writeClipboard(jsid, copyFn);
-    // 优先走通知 URL 直达：点击通知即把会话投递给 QLIT App 自动导入
+    store.write(String(Date.now()), KEY_AT);
+    var copied = false;
+    try {
+      if (typeof copyFn === 'function') copied = copyFn(jsid);
+    } catch (e) { /* 忽略 */ }
     notify('出行登记', '✓ 已捕获校园会话' + (copied ? '，已复制' : ''),
       '点此打开 QLIT 自动导入',
       { url: 'qlit://import-session?value=' + encodeURIComponent(jsid) });
-    return { wrote: true, changed: true, copied: copied };
-  }
-  // 会话没变：超过静默窗才刷新时间戳（给保活脚本一个“最后确认存活”参考）
-  if (now - Number(store.read(KEY_AT) || 0) > NOTIFY_SILENCE_MS) {
-    store.write(String(now), KEY_AT);
-  }
-  return { wrote: true, changed: false, copied: false };
+  });
+  return { wrote: false, probing: true };
 }
 
 // 代理引擎环境
@@ -72,17 +103,28 @@ if (typeof $request !== 'undefined' && typeof $done !== 'undefined') {
         $notification.post(t, sub, body);
       }
     }, function (text) {
-      // 特性探测：有 $clipboard.write 就直写剪贴板（部分版本支持）
       if (typeof $clipboard !== 'undefined' && $clipboard && typeof $clipboard.write === 'function') {
         $clipboard.write(text);
         return true;
       }
       return false;
+    }, function (jsid, cb) {
+      // SSO 实测：响应体里出现 setItem("Authorization" 即视为会话有效
+      $httpClient.get(SSO_URL, {
+        headers: {
+          'User-Agent': PROBE_UA,
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          Cookie: 'JSESSIONID=' + jsid + '; HHMM=' + hhmm()
+        },
+        timeout: 15
+      }, function (_err, _resp, data) {
+        cb(/setItem\("Authorization"/.test(String(data || '')));
+      });
     });
   } catch (e) {
     $notification.post('出行登记', '捕获脚本异常', String(e));
   }
   $done({});
 } else if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { extractJsid: extractJsid, writeClipboard: writeClipboard, runCapture: runCapture };
+  module.exports = { extractJsid: extractJsid, verifySession: verifySession, runCapture: runCapture, hhmm: hhmm };
 }
