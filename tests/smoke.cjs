@@ -5,6 +5,9 @@ const path = require('path');
 const capture = require(path.join(__dirname, '..', 'scripts', 'qlit-capture.js'));
 const submit = require(path.join(__dirname, '..', 'scripts', 'qlit-submit.js'));
 const keepalive = require(path.join(__dirname, '..', 'scripts', 'qlit-keepalive.js'));
+// Shadowrocket 版与 Surge 版共享全部纯函数（仅网络回调适配不同）
+const srSubmit = require(path.join(__dirname, '..', 'shadowrocket', 'qlit-submit.js'));
+const srKeepalive = require(path.join(__dirname, '..', 'shadowrocket', 'qlit-keepalive.js'));
 
 let n = 0;
 function t(name, fn) {
@@ -131,6 +134,18 @@ t('looksLoggedOut 区分失效与正常', () => {
   assert.strictEqual(keepalive.looksLoggedOut('200', ''), false);
   assert.strictEqual(keepalive.looksLoggedOut('200', '<html>统一身份认证登录</html>'), true);
   assert.strictEqual(keepalive.looksLoggedOut('200', '<html>欢迎返校</html>'), false);
+});
+
+// ---------- Shadowrocket 版一致性 ----------
+t('SR 版与 Surge 版纯函数行为一致', () => {
+  assert.deepStrictEqual(Object.keys(srSubmit).sort(), Object.keys(submit).sort());
+  assert.deepStrictEqual(Object.keys(srKeepalive).sort(), Object.keys(keepalive).sort());
+  assert.strictEqual(srSubmit.jwtOf('<script>setItem("Authorization", "eyJx.y.z")</script>'), 'eyJx.y.z');
+  assert.match(srSubmit.cookieHeader('SR1'), /^JSESSIONID=SR1; HHMM=\d{4}$/);
+  assert.strictEqual(srKeepalive.looksLoggedOut('200', ''), false);
+  const body = srSubmit.buildBody(CFG, [], FORM_OK, '2026-08-27').body;
+  assert.strictEqual(body.MDDQX, '370112');
+  assert.strictEqual(body.FS, '公交');
 });
 
 console.log(`\n${n} 个断言组全部通过`);
