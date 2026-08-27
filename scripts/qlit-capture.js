@@ -98,8 +98,9 @@ function runCapture(request, store, notify, copyFn, probe) {
   var raw = headers.Cookie || headers.cookie || '';
   var jsid = extractJsid(raw);
   if (!jsid) {
-    // pass 域请求但不带会话：平台未登录或 Cookie 被清，这个信号很有价值
-    notifyDebug(store, notify, { status: '无Cookie', preview: 'pass.qlit.edu.cn 请求未携带 JSESSIONID（可能未登录）' });
+    // pass 域请求但不带会话：平台未登录或 Cookie 被清，附上路径便于定位
+    var path = url.replace(/^https?:\/\/pass\.qlit\.edu\.cn/, '') || '/';
+    notifyDebug(store, notify, { status: '无Cookie', preview: 'pass.qlit.edu.cn' + path.slice(0, 80) + ' 未携带 JSESSIONID（微信侧未登录）' });
     return { wrote: false, skipped: 'no-cookie' };
   }
 

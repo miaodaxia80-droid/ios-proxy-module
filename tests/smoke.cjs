@@ -72,7 +72,7 @@ t('capture 其他校园子域只记录发现不入库', () => {
   );
   assert.strictEqual(notes2.length, 0);
 });
-t('capture pass 域无 Cookie 请求发调试通知', () => {
+t('capture pass 域无 Cookie 请求发调试通知（含路径）', () => {
   const store = memStore({ qlit_debug_at: '0' });
   const notes = [];
   const r = capture.runCapture(
@@ -81,6 +81,7 @@ t('capture pass 域无 Cookie 请求发调试通知', () => {
   );
   assert.strictEqual(r.skipped, 'no-cookie');
   assert.strictEqual(notes.length, 1);
+  assert.match(notes[0][2], /\/student\/mobile\/admin\.jsp/);
   assert.match(notes[0][2], /未携带 JSESSIONID/);
 });
 
