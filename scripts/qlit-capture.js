@@ -1,9 +1,12 @@
 /**
  * QLIT 出行登记 · 会话捕获脚本
  *
- * 以 http-response 钩子挂在整个 pass.qlit.edu.cn 域上：
- * 只要从微信 WebView 发来的任何请求携带了 student 域 JSESSIONID，
- * 就把它写进 $persistentStore，供提交脚本与保活脚本使用。
+ * 以 http-response 钩子挂在整个校园域上：任何携带 student 域 JSESSIONID 的
+ * 请求都会把会话写入 $persistentStore；**抓到新会话时自动尝试复制到剪贴板**，
+ * 复制成功后主 App 「出行登记」里直接粘贴即可导入。
+ *
+ * 剪贴板说明：Surge 不同版本对剪贴板 API 支持不一，脚本做特性探测；
+ * 若当前版本不可用，通知会改为显示完整会话，长按通知「拷贝」。
  *
  * 挂载方式见同目录上级清单文件（.sgmodule / .stoverride / .plugin）。
  */
@@ -19,7 +22,18 @@ function extractJsid(raw) {
   return m ? m[1] : '';
 }
 
-function runCapture(request, store, notify) {
+/**
+ * 尝试把文本写入剪贴板。copyFn 由引擎侧注入（特性探测后的具体实现），
+ * 返回是否成功；Node 测试环境不可用时传 null。
+ */
+function writeClipboard(text, copyFn) {
+  try {
+    if (typeof copyFn === 'function') return copyFn(text);
+  } catch (e) { /* 忽略，走通知兜底 */ }
+  return false;
+}
+
+function runCapture(request, store, notify, copyFn) {
   var url = (request && request.url) || '';
   if (!/pass\.qlit\.edu\.cn/.test(url)) return { wrote: false };
 
@@ -34,14 +48,18 @@ function runCapture(request, store, notify) {
   if (old !== jsid) {
     store.write(jsid, KEY_SESSION);
     store.write(String(now), KEY_AT);
-    notify('出行登记', '✓ 已捕获校园会话', jsid.slice(0, 16) + '…\n在「出行登记」面板即可提交');
-    return { wrote: true, changed: true };
+    var copied = writeClipboard(jsid, copyFn);
+    notify('出行登记', '✓ 已捕获校园会话' + (copied ? '，已复制到剪贴板' : ''),
+      copied
+        ? jsid.slice(0, 16) + '…\n打开 QLIT「出行登记」粘贴即可'
+        : 'jsid: ' + jsid + '\n（长按本通知「拷贝」，再粘贴到 QLIT）');
+    return { wrote: true, changed: true, copied: copied };
   }
   // 会话没变：超过静默窗才刷新时间戳（给保活脚本一个“最后确认存活”参考）
   if (now - Number(store.read(KEY_AT) || 0) > NOTIFY_SILENCE_MS) {
     store.write(String(now), KEY_AT);
   }
-  return { wrote: true, changed: false };
+  return { wrote: true, changed: false, copied: false };
 }
 
 // 代理引擎环境
@@ -49,11 +67,18 @@ if (typeof $request !== 'undefined' && typeof $done !== 'undefined') {
   try {
     runCapture($request, $persistentStore, function (t, sub, body) {
       $notification.post(t, sub, body);
+    }, function (text) {
+      // 特性探测：有 $clipboard.write 就直写剪贴板
+      if (typeof $clipboard !== 'undefined' && $clipboard && typeof $clipboard.write === 'function') {
+        $clipboard.write(text);
+        return true;
+      }
+      return false;
     });
   } catch (e) {
     $notification.post('出行登记', '捕获脚本异常', String(e));
   }
   $done({});
 } else if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { extractJsid: extractJsid, runCapture: runCapture };
+  module.exports = { extractJsid: extractJsid, writeClipboard: writeClipboard, runCapture: runCapture };
 }

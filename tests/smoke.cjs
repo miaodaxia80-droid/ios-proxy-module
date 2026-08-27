@@ -41,11 +41,38 @@ t('runCapture 首次捕获写入存储并发通知', () => {
   const r = capture.runCapture(
     { url: 'https://pass.qlit.edu.cn/student/mobile/admin.jsp', headers: { Cookie: 'JSESSIONID=S1' } },
     store,
-    (t1) => notes.push(t1)
+    (sub) => notes.push(sub),
+    () => true
   );
   assert.strictEqual(r.wrote, true);
+  assert.strictEqual(r.copied, true);
   assert.strictEqual(store.read('qlit_session'), 'S1');
   assert.strictEqual(notes.length, 1);
+});
+t('runCapture 剪贴板不可用时通知带完整会话提示', () => {
+  const store = memStore();
+  const notes = [];
+  const r = capture.runCapture(
+    { url: 'https://pass.qlit.edu.cn/x', headers: { cookie: 'JSESSIONID=S2' } },
+    store,
+    (t1, sub, body) => notes.push([t1, sub, body]),
+    () => false
+  );
+  assert.strictEqual(r.copied, false);
+  assert.match(notes[0][1], /已捕获校园会话/);
+  assert.match(notes[0][2], /长按本通知/);
+  assert.match(notes[0][2], /S2/);
+});
+t('runCapture 同值会话不重复触发复制', () => {
+  let copyCalls = 0;
+  const store = memStore({ qlit_session: 'S1', qlit_captured_at: String(Date.now()) });
+  capture.runCapture(
+    { url: 'https://pass.qlit.edu.cn/x', headers: { Cookie: 'JSESSIONID=S1' } },
+    store,
+    () => {},
+    () => { copyCalls++; return true; }
+  );
+  assert.strictEqual(copyCalls, 0);
 });
 t('runCapture 非校园域忽略；同值不重复通知', () => {
   const store = memStore({ qlit_session: 'S1' });
