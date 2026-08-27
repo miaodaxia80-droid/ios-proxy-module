@@ -1,8 +1,8 @@
-# Stash 覆写：QLIT 出行登记助手
+# Stash 覆写：出行登记助手
 # 注意：Stash 的 scripts/widgets 键名以 stash.wiki/configuration/override 为准；
 # 若导入报错，重点核对 scripts 项的 type/script/cronexpr 与 widgets.params 拼写后微调。
-name: QLIT 出行登记助手
-desc: 微信登录齐鲁理工在校生平台自动捕获 JSESSIONID；磁贴一键提交；每 20 分钟保活。需信任 MITM 证书并开启对 pass.qlit.edu.cn 的解密。
+name: 出行登记助手
+desc: 微信登录校园在校生平台自动捕获 JSESSIONID；磁贴一键提交；每 20 分钟保活。需信任 MITM 证书并开启对 pass.qlit.edu.cn 的解密。
 
 http:
   mitm:
@@ -15,14 +15,14 @@ scripts:
     type: response
     require-body: false
     timeout: 10
-    script: https://raw.githubusercontent.com/KevinXu07/com.schedule.qlit/ios-module-v1/ios-proxy-module/scripts/qlit-capture.js
+    script: https://raw.githubusercontent.com/miaodaxia80-droid/ios-proxy-module/main/scripts/qlit-capture.js
 
   # 保活：滑动过期续命
   - name: QLIT 保活
     type: cron
     cronexpr: "*/20 * * * *"
     timeout: 30
-    script: https://raw.githubusercontent.com/KevinXu07/com.schedule.qlit/ios-module-v1/ios-proxy-module/scripts/qlit-keepalive.js
+    script: https://raw.githubusercontent.com/miaodaxia80-droid/ios-proxy-module/main/scripts/qlit-keepalive.js
 
 # 磁贴面板：点击执行提交脚本
 widgets:
@@ -30,4 +30,4 @@ widgets:
     type: script
     params:
       title: 出行登记
-      script: https://raw.githubusercontent.com/KevinXu07/com.schedule.qlit/ios-module-v1/ios-proxy-module/scripts/qlit-submit.js
+      script: https://raw.githubusercontent.com/miaodaxia80-droid/ios-proxy-module/main/scripts/qlit-submit.js
