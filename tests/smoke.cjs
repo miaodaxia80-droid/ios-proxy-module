@@ -1,0 +1,136 @@
+/* 代理引擎外可跑的冒烟测试：node tests/smoke.cjs */
+const assert = require('assert');
+const path = require('path');
+
+const capture = require(path.join(__dirname, '..', 'scripts', 'qlit-capture.js'));
+const submit = require(path.join(__dirname, '..', 'scripts', 'qlit-submit.js'));
+const keepalive = require(path.join(__dirname, '..', 'scripts', 'qlit-keepalive.js'));
+
+let n = 0;
+function t(name, fn) {
+  fn();
+  n++;
+  console.log('  ok -', name);
+}
+
+// ---------- capture ----------
+t('extractJsid 从 Cookie 头提取并保留 sticky 后缀', () => {
+  assert.strictEqual(capture.extractJsid('JSESSIONID=ABC123.node1; HHMM=1200'), 'ABC123.node1');
+});
+t('extractJsid 支持数组形式的头', () => {
+  assert.strictEqual(capture.extractJsid(['JSESSIONID=XYZ']), 'XYZ');
+});
+t('extractJsid 空值/无会话安全返回空串', () => {
+  assert.strictEqual(capture.extractJsid(''), '');
+  assert.strictEqual(capture.extractJsid('FOO=bar'), '');
+});
+
+const memStore = (init = {}) => {
+  const kv = Object.assign({}, init);
+  return {
+    read: k => (k in kv ? kv[k] : ''),
+    write: (v, k) => { kv[k] = v; }
+  };
+};
+t('runCapture 首次捕获写入存储并发通知', () => {
+  const store = memStore();
+  const notes = [];
+  const r = capture.runCapture(
+    { url: 'https://pass.qlit.edu.cn/student/mobile/admin.jsp', headers: { Cookie: 'JSESSIONID=S1' } },
+    store,
+    (t1) => notes.push(t1)
+  );
+  assert.strictEqual(r.wrote, true);
+  assert.strictEqual(store.read('qlit_session'), 'S1');
+  assert.strictEqual(notes.length, 1);
+});
+t('runCapture 非校园域忽略；同值不重复通知', () => {
+  const store = memStore({ qlit_session: 'S1' });
+  const notes = [];
+  assert.deepStrictEqual(
+    capture.runCapture({ url: 'https://a.com/', headers: {} }, store, () => notes.push(1)),
+    { wrote: false }
+  );
+  capture.runCapture(
+    { url: 'https://pass.qlit.edu.cn/x', headers: { cookie: 'JSESSIONID=S1' } },
+    store,
+    () => notes.push(2)
+  );
+  assert.strictEqual(notes.length, 0);
+});
+
+// ---------- submit ----------
+t('hhmm 补零', () => {
+  assert.strictEqual(submit.hhmm(new Date(2026, 0, 2, 7, 5)), '0705');
+});
+t('cookieHeader 携带 JSESSIONID 与 HHMM', () => {
+  assert.match(submit.cookieHeader('AB'), /^JSESSIONID=AB; HHMM=\d{4}$/);
+});
+t('jwtOf 匹配 SSO 页内 setItem 授权令牌', () => {
+  const html = '<script>localStorage.setItem("Authorization", "eyJhbGci.eyJzdXF.tok");</script>';
+  assert.strictEqual(submit.jwtOf(html), 'eyJhbGci.eyJzdXF.tok');
+  assert.strictEqual(submit.jwtOf('<html>登录页</html>'), '');
+});
+t('unwrapMessage：JSON 字符串解析、失败抛错、纯文本透传', () => {
+  assert.deepStrictEqual(
+    submit.unwrapMessage({ message: '{"adress":[]}' }),
+    { adress: [] }
+  );
+  assert.throws(() => submit.unwrapMessage({ success: false, message: '没登录' }), /没登录/);
+  assert.strictEqual(submit.unwrapMessage({ message: '成功' }), '成功');
+});
+
+const CFG = {
+  stu: { STUMC: '张三' },
+  adress: [{ ID: '370181', NAME: '历城' }, { CODE: '370112', NAME: '历下' }],
+  cxfs: ['步行', '公交'],
+  timesetb: '08:00',
+  timesete: '18:00'
+};
+const FORM_OK = { REGION_INDEX: 1, MODE_INDEX: 1, PLACE: ' 家 ', REASON: '回家', PHONE: '13800000000', ALLOW_DUPLICATE: false };
+
+t('buildBody 组装完整提交体（含历史拼写 adress 与 CODE 兜底）', () => {
+  const { body, who } = submit.buildBody(CFG, [], FORM_OK, '2026-08-27');
+  assert.deepStrictEqual(body, {
+    CXRQ: '2026-08-27', LXSJ: '08:00', FXSJ: '18:00',
+    MDDQX: '370112', MDD: '家', SY: '回家', FS: '公交', JJDH: '13800000000'
+  });
+  assert.strictEqual(who, '张三');
+});
+t('buildBody 缺必填时列出全部缺失项', () => {
+  try {
+    submit.buildBody(CFG, [], { ...FORM_OK, PHONE: '' }, '2026-08-27');
+    assert.fail('应当抛错');
+  } catch (e) {
+    assert.match(e.message, /FORM\.PHONE/);
+  }
+});
+t('buildBody 同日已有登记且未允许重复时阻断', () => {
+  try {
+    submit.buildBody(CFG, [{ CXRQ: '2026-08-27' }], FORM_OK, '2026-08-27');
+    assert.fail('应当抛错');
+  } catch (e) {
+    assert.match(e.message, /已有 1 条登记/);
+  }
+  // 允许重复后放行
+  submit.buildBody(CFG, [{ CXRQ: '2026-08-27' }],
+    { ...FORM_OK, ALLOW_DUPLICATE: true }, '2026-08-27');
+});
+t('buildBody 下标越界与空配置报错', () => {
+  assert.throws(() => submit.buildBody(CFG, [], { ...FORM_OK, REGION_INDEX: 9 }, '2026-08-27'), /REGION_INDEX/);
+  assert.throws(() => submit.buildBody({ cxfs: [] }, [], FORM_OK, '2026-08-27'), /配置为空/);
+});
+t('todayIso 为本地日期 YYYY-MM-DD', () => {
+  assert.match(submit.todayIso(), /^\d{4}-\d{2}-\d{2}$/);
+});
+
+// ---------- keepalive ----------
+t('looksLoggedOut 区分失效与正常', () => {
+  assert.strictEqual(keepalive.looksLoggedOut('403', ''), true);
+  assert.strictEqual(keepalive.looksLoggedOut('302', ''), true);
+  assert.strictEqual(keepalive.looksLoggedOut('200', ''), false);
+  assert.strictEqual(keepalive.looksLoggedOut('200', '<html>统一身份认证登录</html>'), true);
+  assert.strictEqual(keepalive.looksLoggedOut('200', '<html>欢迎返校</html>'), false);
+});
+
+console.log(`\n${n} 个断言组全部通过`);
