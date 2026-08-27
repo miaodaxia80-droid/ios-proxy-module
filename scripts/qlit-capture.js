@@ -16,7 +16,9 @@
 var KEY_SESSION = 'qlit_session';
 var KEY_AT = 'qlit_captured_at';
 var KEY_PROBE = 'qlit_probe_pending';
+var KEY_DEBUG_AT = 'qlit_debug_at';
 var NOTIFY_SILENCE_MS = 5 * 60 * 1000;
+var DEBUG_SILENCE_MS = 10 * 60 * 1000; // 调试通知最多 10 分钟一条
 
 var SSO_URL = 'https://pass.qlit.edu.cn/student/mobile/sso_mj_baobei/index.jsp';
 var PROBE_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ' +
@@ -38,7 +40,8 @@ function hhmm(d) {
 
 /**
  * 对新会话做一次 SSO 实测。probe 由引擎侧注入（$httpClient 实现），
- * 以回调返回是否拿到 JWT；Node 测试环境传 null 时视为可用。
+ * 回调签名 cb(ok, info)；info 含 { status, preview } 供失败调试用。
+ * Node 测试环境传 null 时视为可用。
  */
 function verifySession(jsid, probe, cb) {
   try {
@@ -48,8 +51,19 @@ function verifySession(jsid, probe, cb) {
       cb(true);
     }
   } catch (e) {
-    cb(false);
+    cb(false, { status: '0', preview: String(e).slice(0, 120) });
   }
+}
+
+/** 失败调试通知（限频）：让用户能直接把服务端响应发回来定位问题。 */
+function notifyDebug(store, notify, info) {
+  var now = Date.now();
+  if (now - Number(store.read(KEY_DEBUG_AT) || 0) < DEBUG_SILENCE_MS) return;
+  store.write(String(now), KEY_DEBUG_AT);
+  var status = (info && info.status) || '?';
+  var preview = (info && info.preview) || '无响应体';
+  notify('⚠️ 出行登记·调试', '会话验证未通过（HTTP ' + status + '）',
+    '响应开头：' + preview + '\n请把本通知内容发给开发者');
 }
 
 function runCapture(request, store, notify, copyFn, probe) {
@@ -77,9 +91,12 @@ function runCapture(request, store, notify, copyFn, probe) {
 
   // 新会话：标记 → 实测 → 通过才入库并通知
   store.write(jsid, KEY_PROBE);
-  verifySession(jsid, probe, function (ok) {
+  verifySession(jsid, probe, function (ok, info) {
     store.write('', KEY_PROBE);
-    if (!ok) return; // 会话无效，静默等待下一个候选
+    if (!ok) {
+      notifyDebug(store, notify, info); // 失败也要让用户看到原因
+      return;
+    }
     store.write(jsid, KEY_SESSION);
     store.write(String(Date.now()), KEY_AT);
     var copied = false;
@@ -109,7 +126,7 @@ if (typeof $request !== 'undefined' && typeof $done !== 'undefined') {
       }
       return false;
     }, function (jsid, cb) {
-      // SSO 实测：响应体里出现 setItem("Authorization" 即视为会话有效
+      // SSO 实测：响应体出现 setItem("Authorization" 或任意 eyJ JWT 痕迹即为会话可用
       $httpClient.get(SSO_URL, {
         headers: {
           'User-Agent': PROBE_UA,
@@ -117,8 +134,11 @@ if (typeof $request !== 'undefined' && typeof $done !== 'undefined') {
           Cookie: 'JSESSIONID=' + jsid + '; HHMM=' + hhmm()
         },
         timeout: 15
-      }, function (_err, _resp, data) {
-        cb(/setItem\("Authorization"/.test(String(data || '')));
+      }, function (err, resp, data) {
+        var text = String(data || '');
+        var status = resp && (resp.status || resp.statusCode) ? String(resp.status || resp.statusCode) : String(err || '0');
+        var ok = /setItem\("Authorization"|eyJ[A-Za-z0-9_-]{12,}\./.test(text);
+        cb(ok, { status: status, preview: text.replace(/\s+/g, ' ').slice(0, 150) });
       });
     });
   } catch (e) {
@@ -126,5 +146,5 @@ if (typeof $request !== 'undefined' && typeof $done !== 'undefined') {
   }
   $done({});
 } else if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { extractJsid: extractJsid, verifySession: verifySession, runCapture: runCapture, hhmm: hhmm };
+  module.exports = { extractJsid: extractJsid, verifySession: verifySession, runCapture: runCapture, notifyDebug: notifyDebug, hhmm: hhmm };
 }

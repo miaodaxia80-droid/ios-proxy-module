@@ -69,17 +69,31 @@ t('capture /student/ 新会话实测通过 → 入库并发通知（带 qlit:// 
   assert.match(notes[0][1], /已捕获校园会话，已复制/);
   assert.strictEqual(notes[0][3].url, 'qlit://import-session?value=S1');
 });
-t('capture 实测失败 → 不入库、不通知', () => {
-  const store = memStore();
-  let notes = 0;
+t('capture 实测失败 → 不入库、发调试通知（限频）', () => {
+  const store = memStore({ qlit_debug_at: '0' });
+  const notes = [];
   capture.runCapture(
     { url: 'https://pass.qlit.edu.cn/student/x', headers: { Cookie: 'JSESSIONID=BAD1' } },
-    store, () => notes++,
+    store,
+    (t1, sub, body, urlOpt) => notes.push([t1, sub, body, urlOpt]),
     () => true,
-    probeSync(false)
+    (j, cb) => cb(false, { status: '200', preview: '<html>登录页</html>' })
   );
   assert.strictEqual(store.read('qlit_session'), '');
-  assert.strictEqual(notes, 0);
+  assert.strictEqual(notes.length, 1);
+  assert.match(notes[0][0], /调试/);
+  assert.match(notes[0][1], /HTTP 200/);
+  assert.match(notes[0][2], /登录页/);
+  // 限频：紧接的第二次失败不重复打扰
+  const notes2 = [];
+  capture.runCapture(
+    { url: 'https://pass.qlit.edu.cn/student/x', headers: { Cookie: 'JSESSIONID=BAD2' } },
+    store,
+    (t1, sub) => notes2.push(sub),
+    () => true,
+    (j, cb) => cb(false, { status: '200', preview: 'x' })
+  );
+  assert.strictEqual(notes2.length, 0);
 });
 t('capture 同值会话不重复探测不通知', () => {
   const store = memStore({ qlit_session: 'S1', qlit_captured_at: String(Date.now()) });
