@@ -1,8 +1,11 @@
 /* 代理引擎外可跑的冒烟测试：node tests/smoke.cjs */
 const assert = require('assert');
+const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 
 const capture = require(path.join(__dirname, '..', 'scripts', 'qlit-capture.js'));
+const captureSource = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'qlit-capture.js'), 'utf8');
 const submit = require(path.join(__dirname, '..', 'scripts', 'qlit-submit.js'));
 const keepalive = require(path.join(__dirname, '..', 'scripts', 'qlit-keepalive.js'));
 const diagnose = require(path.join(__dirname, '..', 'scripts', 'qlit-diagnose.js'));
@@ -154,6 +157,31 @@ t('capture pending 标记防验证重入', () => {
   );
   assert.strictEqual(r.pending, true);
   assert.strictEqual(store.read('qlit_session'), '');
+});
+t('Surge 捕获使用 options 对象，并在 SSO 回调后才结束', () => {
+  const store = memStore();
+  let doneCalls = 0;
+  let options;
+  let callback;
+  vm.runInNewContext(captureSource, {
+    $request: { url: 'https://pass.qlit.edu.cn/student/x', headers: { Cookie: 'JSESSIONID=ASYNC' } },
+    $persistentStore: store,
+    $notification: { post: () => {} },
+    $clipboard: { write: () => true },
+    $httpClient: {
+      get: (receivedOptions, receivedCallback) => {
+        options = receivedOptions;
+        callback = receivedCallback;
+      }
+    },
+    $done: () => { doneCalls++; }
+  });
+  assert.strictEqual(options.url, 'https://pass.qlit.edu.cn/student/mobile/sso_mj_baobei/index.jsp');
+  assert.strictEqual(typeof callback, 'function');
+  assert.strictEqual(doneCalls, 0);
+  callback(null, { status: 200 }, '<script>setItem("Authorization", "eyJabcdefghijklmnop.q.r")</script>');
+  assert.strictEqual(store.read('qlit_session'), 'ASYNC');
+  assert.strictEqual(doneCalls, 1);
 });
 
 // ---------- submit ----------

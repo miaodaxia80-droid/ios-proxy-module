@@ -7,7 +7,7 @@ hostname = %APPEND% pass.qlit.edu.cn, *.qlit.edu.cn
 
 [Script]
 # 抓取+发现：监听整个 qlit.edu.cn；新子域名与无会话请求都会发调试通知
-QLIT Captor = type=http-response,pattern=qlit\.edu\.cn,requires-body=false,max-size=0,timeout=10,script-path=https://raw.githubusercontent.com/miaodaxia80-droid/ios-proxy-module/main/scripts/qlit-capture.js
+QLIT Captor = type=http-response,pattern=qlit\.edu\.cn,requires-body=false,max-size=0,timeout=20,script-path=https://raw.githubusercontent.com/miaodaxia80-droid/ios-proxy-module/main/scripts/qlit-capture.js
 
 # 提交：点击下方 Panel 执行完整业务流程
 QLIT Submit = type=generic,timeout=120,script-path=https://raw.githubusercontent.com/miaodaxia80-droid/ios-proxy-module/main/scripts/qlit-submit.js

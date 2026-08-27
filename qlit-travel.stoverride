@@ -14,7 +14,7 @@ scripts:
     url: ^https?:\/\/pass\.qlit\.edu\.cn\/
     type: response
     require-body: false
-    timeout: 10
+    timeout: 20
     script: https://raw.githubusercontent.com/miaodaxia80-droid/ios-proxy-module/main/scripts/qlit-capture.js
 
   # 保活：滑动过期续命
