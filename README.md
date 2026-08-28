@@ -1,6 +1,7 @@
 # 出行登记助手 · 代理 App 模块（iPhone）
 
 把「会话捕获 + 提交 + 保活」放进 Surge / Loon / Stash / **Shadowrocket** 的脚本模块，
+iPhone 上使用 **Quantumult X（QX）** 时提供仅捕获版本；捕获后统一点通知转入 QLIT App 完成登记：
 iPhone 端体验对标 Android 版：
 
 ```text
@@ -20,8 +21,10 @@ ios-proxy-module/
 ├── qlit-travel.sgmodule    Surge 模块
 ├── qlit-travel.plugin      Loon 插件
 ├── qlit-travel.stoverride  Stash 覆写
+├── quantumultx/
+│   └── qlit-travel.conf     QX 重写模块（捕获 + SSO 验证 + 直达 QLIT）
 ├── shadowrocket/
-│   ├── qlit-travel.conf    Shadowrocket 配置片段（并入主配置用）
+│   ├── qlit-travel.conf    Shadowrocket 配置模块（并入主配置或导入用）
 │   ├── qlit-submit.js      提交脚本 SR 版（generic 手动运行）
 │   └── qlit-keepalive.js   保活脚本 SR 版（cron）
 └── scripts/
@@ -44,7 +47,22 @@ ios-proxy-module/
 - **离线**：用 AirDrop 把 `scripts/*.js` 与对应清单文件发到手机，
   按各 App 的本地目录规则放置，并把清单里四个 `script-path/script:` 改成本地相对路径。
 
+## Quantumult X（QX）安装方式
+
+导入远程重写模块：
+
+`https://raw.githubusercontent.com/miaodaxia80-droid/ios-proxy-module/main/quantumultx/qlit-travel.conf`
+
+随后打开 Rewrite 与 MITM，并确认 QX 根证书已被 iOS 完全信任。该版本只做
+**会话捕获 → SSO 验证 → 通知直达 QLIT**；不在 QX 中放保活或提交任务，避免后台请求
+和误触造成真实登记。QX 使用 `$prefs` 保存会话、`$task.fetch` 完成验证，和 Surge/Shadowrocket
+共用同一份捕获判断与通知格式。
+
 ## Shadowrocket 安装方式（手动添加，无需导入配置文件）
+
+可直接导入或并入配置的版本：
+
+`https://raw.githubusercontent.com/miaodaxia80-droid/ios-proxy-module/main/shadowrocket/qlit-travel.conf`
 
 Shadowrocket 没有模块/面板概念，但脚本引擎与 Surge 同族，三步在 UI 里完成：
 

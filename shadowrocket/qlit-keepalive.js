@@ -33,7 +33,8 @@ if (typeof $httpClient !== 'undefined' && typeof $persistentStore !== 'undefined
   if (!jsid) {
     if (typeof $done === 'function') $done();
   } else {
-    $httpClient.get(ADMIN_URL, {
+    $httpClient.get({
+      url: ADMIN_URL,
       headers: {
         'User-Agent': UA,
         Cookie: 'JSESSIONID=' + jsid + '; HHMM=' + hhmm()

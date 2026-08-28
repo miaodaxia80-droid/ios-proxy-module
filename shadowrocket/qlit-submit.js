@@ -136,11 +136,11 @@ if (typeof $httpClient !== 'undefined' && typeof $persistentStore !== 'undefined
   }
 
   function httpGet(url, headers, cb) {
-    $httpClient.get(url, { headers: headers }, adapt(cb));
+    $httpClient.get({ url: url, headers: headers }, adapt(cb));
   }
   function httpPost(url, obj, headers, cb) {
     var h = Object.assign({}, headers, { 'Content-Type': 'application/json' });
-    $httpClient.post(url, { headers: h, body: JSON.stringify(obj) }, adapt(cb));
+    $httpClient.post({ url: url, headers: h, body: JSON.stringify(obj) }, adapt(cb));
   }
 
   function notify(sub, body) { $notification.post('出行登记', sub, body); }

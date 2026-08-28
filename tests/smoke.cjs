@@ -6,6 +6,8 @@ const vm = require('vm');
 
 const capture = require(path.join(__dirname, '..', 'scripts', 'qlit-capture.js'));
 const captureSource = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'qlit-capture.js'), 'utf8');
+const qxConfig = fs.readFileSync(path.join(__dirname, '..', 'quantumultx', 'qlit-travel.conf'), 'utf8');
+const srConfig = fs.readFileSync(path.join(__dirname, '..', 'shadowrocket', 'qlit-travel.conf'), 'utf8');
 const submit = require(path.join(__dirname, '..', 'scripts', 'qlit-submit.js'));
 const keepalive = require(path.join(__dirname, '..', 'scripts', 'qlit-keepalive.js'));
 const diagnose = require(path.join(__dirname, '..', 'scripts', 'qlit-diagnose.js'));
@@ -45,6 +47,13 @@ const memStore = (init = {}) => {
   };
 };
 const probeSync = (ok) => (jsid, cb) => cb(ok);
+
+t('QX 与 Shadowrocket 配置均指向共享捕获脚本', () => {
+  assert.match(qxConfig, /url script-response-header https:\/\/raw\.githubusercontent\.com\/miaodaxia80-droid\/ios-proxy-module\/main\/scripts\/qlit-capture\.js/);
+  assert.match(qxConfig, /hostname = %APPEND% pass\.qlit\.edu\.cn/);
+  assert.match(srConfig, /type=http-response/);
+  assert.match(srConfig, /script-update-interval=3600/);
+});
 
 // ---------- capture：域名发现与过滤 ----------
 t('capture 非校园域请求忽略', () => {
@@ -182,6 +191,41 @@ t('Surge 捕获使用 options 对象，并在 SSO 回调后才结束', () => {
   callback(null, { status: 200 }, '<script>setItem("Authorization", "eyJabcdefghijklmnop.q.r")</script>');
   assert.strictEqual(store.read('qlit_session'), 'ASYNC');
   assert.strictEqual(doneCalls, 1);
+});
+t('QX 捕获用 $prefs 和 $task，并在 SSO 回调后才结束', () => {
+  const store = memStore();
+  let doneCalls = 0;
+  let options;
+  let onSuccess;
+  let onFailure;
+  let noticeOptions;
+  vm.runInNewContext(captureSource, {
+    $request: { url: 'https://pass.qlit.edu.cn/student/x', headers: { Cookie: 'JSESSIONID=QX1' } },
+    $prefs: {
+      valueForKey: key => store.read(key),
+      setValueForKey: (value, key) => store.write(value, key)
+    },
+    $task: {
+      fetch: receivedOptions => {
+        options = receivedOptions;
+        return {
+          then: callback => {
+            onSuccess = callback;
+            return { catch: callback => { onFailure = callback; } };
+          }
+        };
+      }
+    },
+    $notify: (title, subtitle, body, receivedOptions) => { noticeOptions = receivedOptions; },
+    $done: () => { doneCalls++; }
+  });
+  assert.strictEqual(options.url, 'https://pass.qlit.edu.cn/student/mobile/sso_mj_baobei/index.jsp');
+  assert.strictEqual(doneCalls, 0);
+  onSuccess({ statusCode: 200, body: '<script>setItem("Authorization", "eyJabcdefghijklmnop.q.r")</script>' });
+  assert.strictEqual(store.read('qlit_session'), 'QX1');
+  assert.strictEqual(noticeOptions['open-url'], 'qlit://import-session?value=QX1');
+  assert.strictEqual(doneCalls, 1);
+  assert.strictEqual(typeof onFailure, 'function');
 });
 
 // ---------- submit ----------

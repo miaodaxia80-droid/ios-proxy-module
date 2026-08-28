@@ -139,8 +139,7 @@ function runCapture(request, store, notify, copyFn, probe, onComplete) {
   return { wrote: false, probing: true };
 }
 
-// 代理引擎环境
-if (typeof $request !== 'undefined' && typeof $done !== 'undefined') {
+function runSurgeCapture() {
   var didFinish = false;
   function finish() {
     if (didFinish) return;
@@ -180,6 +179,59 @@ if (typeof $request !== 'undefined' && typeof $done !== 'undefined') {
   } catch (e) {
     $notification.post('出行登记', '捕获脚本异常', String(e));
     finish();
+  }
+}
+
+function runQuantumultXCapture() {
+  var didFinish = false;
+  function finish() {
+    if (didFinish) return;
+    didFinish = true;
+    $done({});
+  }
+  var store = {
+    read: function (key) { return $prefs.valueForKey(key) || ''; },
+    write: function (value, key) { return $prefs.setValueForKey(String(value), key); }
+  };
+  function notify(title, subtitle, body, urlOpt) {
+    if (urlOpt && urlOpt.url) {
+      $notify(title, subtitle, body, { 'open-url': urlOpt.url });
+    } else {
+      $notify(title, subtitle, body);
+    }
+  }
+  try {
+    var result = runCapture($request, store, notify, null, function (jsid, cb) {
+      $task.fetch({
+        url: SSO_URL,
+        method: 'GET',
+        headers: {
+          'User-Agent': PROBE_UA,
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          Cookie: 'JSESSIONID=' + jsid + '; HHMM=' + hhmm()
+        }
+      }).then(function (resp) {
+        var text = String((resp && resp.body) || '');
+        var status = resp && (resp.statusCode || resp.status) ? String(resp.statusCode || resp.status) : '0';
+        var ok = /setItem\("Authorization"|eyJ[A-Za-z0-9_-]{12,}\./.test(text);
+        cb(ok, { status: status, preview: text.replace(/\s+/g, ' ').slice(0, 150) });
+      }).catch(function (error) {
+        cb(false, { status: '0', preview: String(error).slice(0, 150) });
+      });
+    }, finish);
+    if (!result.probing) finish();
+  } catch (e) {
+    $notify('出行登记', '捕获脚本异常', String(e));
+    finish();
+  }
+}
+
+// 代理引擎环境
+if (typeof $request !== 'undefined' && typeof $done !== 'undefined') {
+  if (typeof $task !== 'undefined' && typeof $prefs !== 'undefined') {
+    runQuantumultXCapture();
+  } else {
+    runSurgeCapture();
   }
 } else if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
